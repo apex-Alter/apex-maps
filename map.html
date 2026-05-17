@@ -329,33 +329,36 @@
                 allMarkers = [];
             }
 
-            // 监听 CloudBase 集合变化（实时同步）
-            function startListen(mapKey) {
-                const col = db.collection('markers_' + mapKey);
-                col.watch({
-                    onChange: (snapshot) => {
-                        clearMarkers();
-                        snapshot.docs.forEach(doc => {
-                            const m = doc;
+            // 从云端加载所有标点（替换实时监听，改为手动刷新）
+            async function loadAllMarkers() {
+                try {
+                    const res = await db.collection('markers_' + currentMapKey).get();
+                    clearMarkers();
+                    if (res.data && res.data.length > 0) {
+                        res.data.forEach(doc => {
                             addMarkerToMap({
                                 id: doc._id,
-                                name: m.name || '未命名',
-                                x: m.x || 0,
-                                y: m.y || 0,
-                                url: m.url || '',
+                                name: doc.name || '未命名',
+                                x: doc.x || 0,
+                                y: doc.y || 0,
+                                url: doc.url || '',
                                 leafletMarker: null
                             });
                         });
-                    },
-                    onError: (err) => {
-                        console.error('监听失败', err);
-                        showToast('❌ 数据同步失败，请刷新重试');
                     }
-                });
+                } catch(e) {
+                    console.error('加载标点失败', e);
+                    showToast('❌ 加载标点数据失败');
+                }
             }
 
             async function addNewMarker(x, y) {
                 if(!isAdminMode || !auth.currentUser) { showToast('❌ 无权限'); return; }
+
+                // 限制坐标在图片范围内（2750x2750）
+                const clampedX = Math.max(0, Math.min(imgW, Math.round(x)));
+                const clampedY = Math.max(0, Math.min(imgH, Math.round(y)));
+
                 showModal('📍 添加新标点', [
                     { key:'name', label:'标点名称', type:'text', placeholder:'例如：补给仓', required:true, value:'' },
                     { key:'url', label:'外部链接', type:'url', placeholder:'https://...', required:true, value:'' }
@@ -363,11 +366,12 @@
                     try {
                         await db.collection('markers_' + currentMapKey).add({
                             name: vals.name,
-                            x: Math.round(x),
-                            y: Math.round(y),
+                            x: clampedX,
+                            y: clampedY,
                             url: vals.url
                         });
                         showToast('✅ 标点已添加（云端同步）');
+                        await loadAllMarkers(); // 立即刷新显示
                     } catch(e) {
                         console.error(e);
                         showToast('❌ 添加失败：'+e.message);
@@ -386,6 +390,7 @@
                             url: vals.url
                         });
                         showToast('✅ 标点已更新');
+                        await loadAllMarkers(); // 刷新
                     } catch(e) {
                         console.error(e);
                         showToast('❌ 更新失败：'+e.message);
@@ -397,6 +402,7 @@
                         try {
                             await db.collection('markers_' + currentMapKey).doc(data.id).remove();
                             showToast('🗑️ 标点已删除');
+                            await loadAllMarkers(); // 刷新
                         } catch(e) {
                             console.error(e);
                             showToast('❌ 删除失败：'+e.message);
@@ -489,7 +495,8 @@
                     const x=e.latlng.lng, y=e.latlng.lat;
                     if(x>=0 && y>=0 && x<=w && y<=h) addNewMarker(x,y);
                 });
-                startListen(currentMapKey);
+                // 改用 loadAllMarkers 替代原来的实时监听
+                loadAllMarkers();
             }
 
             // ==================== 启动 ====================
