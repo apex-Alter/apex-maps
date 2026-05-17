@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>地图 - 浏览</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        :root {
+            --accent: #f15a24;
+            --accent-glow: #ff7b4a;
+            --danger: #e74c3c;
+            --bg-dark: #0d0d0d;
+            --text: #e0e0e0;
+            --muted: #999;
+        }
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body {
+            background: #000;
+            font-family: "PingFang SC","Microsoft YaHei",sans-serif;
+            height:100vh; width:100vw; overflow:hidden;
+            user-select:none; -webkit-user-select:none;
+        }
+        #map { width:100%; height:100%; background:#0a0a0a; cursor:grab; }
+        #map:active { cursor:grabbing; }
+        #map.crosshair-mode { cursor:crosshair!important; }
+        #map.crosshair-mode:active { cursor:crosshair!important; }
+        .leaflet-control-zoom { border:1px solid #333!important; border-radius:8px!important; overflow:hidden; box-shadow:0 4px 20px rgba(0,0,0,0.6)!important; }
+        .leaflet-control-zoom a { background:rgba(20,20,20,0.9)!important; color:#ccc!important; border-bottom:1px solid #2a2a2a!important; width:36px!important; height:36px!important; line-height:36px!important; font-size:1.1rem!important; transition:all 0.2s; }
+        .leaflet-control-zoom a:hover { background:#2a2a2a!important; color:#fff!important; }
+        .leaflet-control-zoom a:last-child { border-bottom:none!important; }
+        .custom-marker-dot {
+            width:22px; height:22px; background:var(--accent);
+            border:3px solid #fff; border-radius:50%;
+            box-shadow:0 0 0 6px rgba(241,90,36,0.35),0 0 18px rgba(241,90,36,0.5),0 2px 8px rgba(0,0,0,0.5);
+            cursor:pointer; transition:all 0.3s ease;
+            animation:markerPulse 2.5s ease-in-out infinite;
+            position:relative;
+        }
+        .custom-marker-dot::after {
+            content:''; position:absolute; top:50%; left:50%;
+            transform:translate(-50%,-50%);
+            width:6px; height:6px; background:#fff; border-radius:50%; opacity:0.9;
+        }
+        .custom-marker-dot:hover {
+            transform:scale(1.4);
+            box-shadow:0 0 0 10px rgba(241,90,36,0.5),0 0 28px rgba(241,90,36,0.7),0 2px 12px rgba(0,0,0,0.6);
+            z-index:1000!important;
+        }
+        @keyframes markerPulse {
+            0%,100%{ box-shadow:0 0 0 6px rgba(241,90,36,0.35),0 0 18px rgba(241,90,36,0.5),0 2px 8px rgba(0,0,0,0.5); }
+            50%{ box-shadow:0 0 0 12px rgba(241,90,36,0.15),0 0 26px rgba(241,90,36,0.6),0 2px 8px rgba(0,0,0,0.5); }
+        }
+        .top-bar {
+            position:fixed; top:0; left:0; right:0; z-index:2000;
+            display:flex; align-items:center; justify-content:space-between;
+            padding:12px 16px; pointer-events:none; gap:12px;
+        }
+        .top-bar>* { pointer-events:auto; }
+        .back-btn {
+            display:inline-flex; align-items:center; gap:6px;
+            text-decoration:none; color:#ccc; font-size:0.85rem;
+            letter-spacing:0.04em; background:rgba(20,20,20,0.85);
+            padding:8px 14px; border-radius:20px; border:1px solid #333;
+            transition:all 0.3s; backdrop-filter:blur(10px);
+            white-space:nowrap;
+        }
+        .back-btn:hover { color:#fff; background:rgba(30,30,30,0.9); border-color:#555; }
+        .back-btn .arrow { font-size:1.1rem; line-height:1; }
+        .map-title-display {
+            font-size:0.9rem; font-weight:500; letter-spacing:0.06em;
+            color:#ddd; background:rgba(20,20,20,0.85);
+            padding:8px 16px; border-radius:20px; border:1px solid #333;
+            backdrop-filter:blur(10px); white-space:nowrap;
+            text-align:center;
+        }
+        .admin-entry-btn {
+            background:rgba(20,20,20,0.85); border:1px solid #333;
+            color:#999; font-size:0.8rem; padding:8px 12px;
+            border-radius:20px; cursor:pointer; letter-spacing:0.04em;
+            transition:all 0.3s; backdrop-filter:blur(10px);
+            white-space:nowrap;
+        }
+        .admin-entry-btn:hover { color:#fff; border-color:#555; }
+        .admin-entry-btn.active-admin {
+            background:var(--accent); border-color:var(--accent);
+            color:#fff; animation:adminGlow 2s ease-in-out infinite;
+        }
+        @keyframes adminGlow {
+            0%,100%{ box-shadow:0 0 12px rgba(241,90,36,0.4); }
+            50%{ box-shadow:0 0 24px rgba(241,90,36,0.7); }
+        }
+        .admin-banner {
+            position:fixed; top:60px; left:50%; transform:translateX(-50%);
+            z-index:2001; background:rgba(241,90,36,0.9); color:#fff;
+            padding:8px 20px; border-radius:20px; font-size:0.8rem;
+            letter-spacing:0.05em; pointer-events:none;
+            animation:fadeInDown 0.4s ease; display:none;
+            box-shadow:0 4px 20px rgba(241,90,36,0.5); text-align:center;
+        }
+        .admin-banner.show { display:block; }
+        @keyframes fadeInDown {
+            from{ opacity:0; transform:translateX(-50%) translateY(-15px); }
+            to{ opacity:1; transform:translateX(-50%) translateY(0); }
+        }
+        .modal-overlay {
+            position:fixed; inset:0; z-index:3000;
+            background:rgba(0,0,0,0.7); display:flex;
+            align-items:center; justify-content:center;
+            animation:fadeIn 0.25s ease; backdrop-filter:blur(3px);
+        }
+        @keyframes fadeIn { from{ opacity:0; } to{ opacity:1; } }
+        .modal-dialog {
+            background:#1c1c1c; border:1px solid #333;
+            border-radius:14px; padding:28px 24px 20px;
+            width:90%; max-width:400px;
+            box-shadow:0 20px 60px rgba(0,0,0,0.7);
+            animation:slideUp 0.35s cubic-bezier(0.25,0.8,0.25,1.2);
+        }
+        @keyframes slideUp {
+            from{ opacity:0; transform:translateY(30px); }
+            to{ opacity:1; transform:translateY(0); }
+        }
+        .modal-dialog h3 { font-size:1rem; font-weight:500; letter-spacing:0.05em; color:#ddd; margin-bottom:18px; text-align:center; }
+        .modal-dialog label { display:block; font-size:0.75rem; letter-spacing:0.04em; color:#999; margin-bottom:4px; text-align:left; }
+        .modal-dialog input {
+            width:100%; padding:10px 14px; margin-bottom:14px;
+            background:#141414; border:1px solid #333; border-radius:8px;
+            color:#e0e0e0; font-size:0.9rem; outline:none;
+            transition:border-color 0.3s; font-family:inherit;
+        }
+        .modal-dialog input:focus { border-color:var(--accent); box-shadow:0 0 0 3px rgba(241,90,36,0.1); }
+        .modal-dialog input::placeholder { color:#555; }
+        .modal-buttons { display:flex; gap:10px; margin-top:6px; flex-wrap:wrap; }
+        .btn {
+            flex:1; min-width:60px; padding:10px 16px;
+            border-radius:8px; border:1px solid #333; cursor:pointer;
+            font-size:0.85rem; letter-spacing:0.04em;
+            transition:all 0.25s; font-family:inherit; text-align:center;
+        }
+        .btn-primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+        .btn-primary:hover { background:#e04d1a; box-shadow:0 4px 16px rgba(241,90,36,0.4); }
+        .btn-cancel { background:transparent; color:#aaa; }
+        .btn-cancel:hover { background:#2a2a2a; color:#fff; }
+        .btn-danger { background:transparent; border-color:#5a1a1a; color:#e74c3c; flex:0 0 auto; }
+        .btn-danger:hover { background:#3a1010; border-color:#e74c3c; color:#ff6b6b; }
+        .password-modal .modal-dialog { max-width:320px; text-align:center; }
+        .password-modal input { text-align:center; font-size:1.1rem; letter-spacing:0.15em; }
+        .toast {
+            position:fixed; bottom:30px; left:50%; transform:translateX(-50%);
+            z-index:4000; background:#2a2a2a; color:#ddd;
+            padding:10px 22px; border-radius:20px; font-size:0.8rem;
+            letter-spacing:0.04em; pointer-events:none;
+            animation:toastIn 0.4s ease, toastOut 0.4s ease 2.2s forwards;
+            box-shadow:0 6px 24px rgba(0,0,0,0.5); border:1px solid #444;
+        }
+        @keyframes toastIn {
+            from{ opacity:0; transform:translateX(-50%) translateY(20px); }
+            to{ opacity:1; transform:translateX(-50%) translateY(0); }
+        }
+        @keyframes toastOut {
+            from{ opacity:1; transform:translateX(-50%) translateY(0); }
+            to{ opacity:0; transform:translateX(-50%) translateY(-15px); }
+        }
+        .image-error-overlay {
+            position:fixed; inset:0; z-index:500;
+            display:flex; align-items:center; justify-content:center;
+            pointer-events:none; background:#0a0a0a;
+        }
+        .image-error-overlay .msg {
+            text-align:center; color:#555; font-size:0.85rem;
+            letter-spacing:0.06em; line-height:1.8;
+        }
+        .image-error-overlay .msg .icon { font-size:3rem; display:block; margin-bottom:10px; }
+        @media (max-width:600px) {
+            .top-bar { padding:8px 10px; gap:6px; }
+            .back-btn { font-size:0.75rem; padding:6px 10px; gap:3px; }
+            .map-title-display { font-size:0.75rem; padding:6px 12px; }
+            .admin-entry-btn { font-size:0.7rem; padding:6px 10px; }
+            .admin-banner { top:50px; font-size:0.7rem; padding:6px 14px; }
+            .modal-dialog { padding:20px 16px 16px; border-radius:10px; }
+            .modal-dialog h3 { font-size:0.9rem; }
+            .btn { font-size:0.78rem; padding:8px 12px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="top-bar">
+        <a href="index.html" class="back-btn"><span class="arrow">←</span> 首页</a>
+        <span class="map-title-display" id="mapTitleDisplay">地图</span>
+        <button class="admin-entry-btn" id="adminToggleBtn">⚙️ 管理</button>
+    </div>
+    <div class="admin-banner" id="adminBanner">🔧 管理模式已启用 — 点击地图放置标点</div>
+    <div id="map"></div>
+    <div class="image-error-overlay" id="imageErrorOverlay" style="display:none;">
+        <div class="msg">
+            <span class="icon">🗺️</span>
+            地图图片未找到<br>
+            <span style="font-size:0.7rem;color:#444;">请将图片放入 maps 文件夹</span>
+        </div>
+    </div>
+
+    <!-- CloudBase Web SDK -->
+    <script src="https://web.sdk.qcloud.com/cloudbase-js-sdk/1.7.1/cloudbase.full.js"></script>
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <script>
+        (function() {
+            // ==================== 配置 ====================
+            const ADMIN_PASSWORD = 'admin123';          // 管理密码
+            const ENV_ID = 'alter-bug-maps-d0gn6ij7x93abc6e0';               // ⚠️ 替换为你的 CloudBase 环境 ID
+
+            const app = cloudbase.init({ env: ENV_ID });
+            const db = app.database();
+            const auth = app.auth();
+
+            const MAP_CONFIGS = {
+                'kings-canyon':  { name:'诸王峡谷', enName:"King's Canyon",  imagePath:'maps/kings-canyon.jpg',  placeholderColor:'#3d2b1f' },
+                'olympus':       { name:'奥林匹斯', enName:'Olympus',        imagePath:'maps/olympus.jpg',       placeholderColor:'#2a3d4f' },
+                'broken-moon':   { name:'残月',     enName:'Broken Moon',    imagePath:'maps/broken-moon.jpg',   placeholderColor:'#1f2d3d' },
+                'storm-point':   { name:'风暴点',   enName:'Storm Point',    imagePath:'maps/storm-point.jpg',   placeholderColor:'#2d3d2a' },
+                'worlds-edge':   { name:'世界尽头', enName:"World's Edge",   imagePath:'maps/worlds-edge.jpg',   placeholderColor:'#3d2d2a' },
+                'power-plant':   { name:'电力区域', enName:'Power Plant',    imagePath:'maps/power-plant.jpg',   placeholderColor:'#3d3a2a' }
+            };
+            const DEFAULT_WIDTH = 1920, DEFAULT_HEIGHT = 1080;
+
+            let currentMapKey = null, currentMapConfig = null;
+            let isAdminMode = false;
+            let mapInstance = null, imageOverlayInstance = null;
+            let allMarkers = [];
+            let imgW = DEFAULT_WIDTH, imgH = DEFAULT_HEIGHT;
+
+            // ==================== DOM 元素 ====================
+            const mapEl = document.getElementById('map');
+            const titleEl = document.getElementById('mapTitleDisplay');
+            const adminBtn = document.getElementById('adminToggleBtn');
+            const bannerEl = document.getElementById('adminBanner');
+            const errorOverlay = document.getElementById('imageErrorOverlay');
+
+            // ==================== 工具函数 ====================
+            function showToast(msg, dur=2400) {
+                const old = document.querySelector('.toast'); if(old) old.remove();
+                const t = document.createElement('div'); t.className='toast'; t.textContent=msg;
+                document.body.appendChild(t);
+                setTimeout(()=>{ if(t.parentNode) t.remove(); }, dur);
+            }
+            function showModal(title, fields, onConfirm, extraButtons=[]) {
+                const existing = document.querySelector('.modal-overlay'); if(existing) existing.remove();
+                const overlay = document.createElement('div'); overlay.className='modal-overlay';
+                const dialog = document.createElement('div'); dialog.className='modal-dialog';
+                const h3 = document.createElement('h3'); h3.textContent=title; dialog.appendChild(h3);
+                const refs = {};
+                fields.forEach(f => {
+                    const label = document.createElement('label'); label.textContent=f.label; dialog.appendChild(label);
+                    const input = document.createElement('input');
+                    input.type=f.type||'text'; input.placeholder=f.placeholder||'';
+                    input.value=f.value||''; dialog.appendChild(input);
+                    refs[f.key]=input;
+                });
+                const btns = document.createElement('div'); btns.className='modal-buttons';
+                extraButtons.forEach(eb => {
+                    const b = document.createElement('button'); b.className='btn '+(eb.className||'btn-cancel');
+                    b.textContent=eb.text; b.addEventListener('click', ()=>{ overlay.remove(); if(eb.callback) eb.callback(); });
+                    btns.appendChild(b);
+                });
+                const confirmBtn = document.createElement('button'); confirmBtn.className='btn btn-primary'; confirmBtn.textContent='确认';
+                confirmBtn.addEventListener('click', ()=>{
+                    const vals = {}; let valid=true;
+                    fields.forEach(f => {
+                        const v = refs[f.key].value.trim(); vals[f.key]=v;
+                        if(f.required && !v) { valid=false; refs[f.key].style.borderColor='#e74c3c'; setTimeout(()=>refs[f.key].style.borderColor='#333',1500); }
+                    });
+                    if(!valid){ showToast('⚠️ 请填写所有必填字段'); return; }
+                    overlay.remove(); if(onConfirm) onConfirm(vals);
+                });
+                btns.appendChild(confirmBtn);
+                const cancelBtn = document.createElement('button'); cancelBtn.className='btn btn-cancel'; cancelBtn.textContent='取消';
+                cancelBtn.addEventListener('click', ()=>overlay.remove()); btns.appendChild(cancelBtn);
+                dialog.appendChild(btns); overlay.appendChild(dialog);
+                overlay.addEventListener('click', e => { if(e.target===overlay) overlay.remove(); });
+                document.body.appendChild(overlay);
+                setTimeout(()=>{ const inp=dialog.querySelector('input'); if(inp) inp.focus(); },150);
+            }
+            function showPasswordModal(callback) {
+                const overlay = document.createElement('div'); overlay.className='modal-overlay password-modal';
+                const dialog = document.createElement('div'); dialog.className='modal-dialog';
+                dialog.innerHTML = `
+                    <h3>🔐 管理员验证</h3>
+                    <label style="text-align:center;">请输入管理密码</label>
+                    <input type="password" id="pwdInput" placeholder="输入密码" style="text-align:center;font-size:1.1rem;letter-spacing:0.15em;">
+                    <div class="modal-buttons">
+                        <button class="btn btn-primary" id="pwdConfirm">确认</button>
+                        <button class="btn btn-cancel" id="pwdCancel">取消</button>
+                    </div>`;
+                overlay.appendChild(dialog); document.body.appendChild(overlay);
+                const pwdInput = dialog.querySelector('#pwdInput');
+                const confirmBtn = dialog.querySelector('#pwdConfirm');
+                const cancelBtn = dialog.querySelector('#pwdCancel');
+                const cleanup = () => overlay.remove();
+                confirmBtn.addEventListener('click', ()=>{ const v=pwdInput.value.trim(); cleanup(); callback(v===ADMIN_PASSWORD); });
+                cancelBtn.addEventListener('click', ()=>{ cleanup(); callback(false); });
+                pwdInput.addEventListener('keydown', e => { if(e.key==='Enter'){ const v=pwdInput.value.trim(); cleanup(); callback(v===ADMIN_PASSWORD); } });
+                overlay.addEventListener('click', e => { if(e.target===overlay){ cleanup(); callback(false); } });
+                setTimeout(()=>pwdInput.focus(),150);
+            }
+
+            // ==================== 标点渲染 ====================
+            function createMarkerIcon() {
+                return L.divIcon({ className:'custom-marker-container', html:'<div class="custom-marker-dot"></div>', iconSize:[22,22], iconAnchor:[11,11], popupAnchor:[0,-16] });
+            }
+            function addMarkerToMap(data) {
+                const icon = createMarkerIcon();
+                const marker = L.marker([data.y, data.x], { icon, interactive:true, bubblingMouseEvents:false }).addTo(mapInstance);
+                marker.bindTooltip(data.name, { permanent:false, direction:'top', offset:[0,-16] });
+                marker.on('click', e => {
+                    L.DomEvent.stopPropagation(e);
+                    if(isAdminMode) editMarker(data);
+                    else {
+                        if(data.url && data.url.trim()) window.open(data.url.trim(), '_blank', 'noopener,noreferrer');
+                        else showToast('⚠️ 该标点未设置链接');
+                    }
+                });
+                data.leafletMarker = marker;
+                allMarkers.push(data);
+            }
+            function clearMarkers() {
+                allMarkers.forEach(m => { if(m.leafletMarker && mapInstance) mapInstance.removeLayer(m.leafletMarker); });
+                allMarkers = [];
+            }
+
+            // 监听 CloudBase 集合变化（实时同步）
+            function startListen(mapKey) {
+                const col = db.collection('markers_' + mapKey);
+                col.watch({
+                    onChange: (snapshot) => {
+                        clearMarkers();
+                        snapshot.docs.forEach(doc => {
+                            const m = doc;
+                            addMarkerToMap({
+                                id: doc._id,
+                                name: m.name || '未命名',
+                                x: m.x || 0,
+                                y: m.y || 0,
+                                url: m.url || '',
+                                leafletMarker: null
+                            });
+                        });
+                    },
+                    onError: (err) => {
+                        console.error('监听失败', err);
+                        showToast('❌ 数据同步失败，请刷新重试');
+                    }
+                });
+            }
+
+            async function addNewMarker(x, y) {
+                if(!isAdminMode || !auth.currentUser) { showToast('❌ 无权限'); return; }
+                showModal('📍 添加新标点', [
+                    { key:'name', label:'标点名称', type:'text', placeholder:'例如：补给仓', required:true, value:'' },
+                    { key:'url', label:'外部链接', type:'url', placeholder:'https://...', required:true, value:'' }
+                ], async (vals) => {
+                    try {
+                        await db.collection('markers_' + currentMapKey).add({
+                            name: vals.name,
+                            x: Math.round(x),
+                            y: Math.round(y),
+                            url: vals.url
+                        });
+                        showToast('✅ 标点已添加（云端同步）');
+                    } catch(e) {
+                        console.error(e);
+                        showToast('❌ 添加失败：'+e.message);
+                    }
+                });
+            }
+            async function editMarker(data) {
+                if(!isAdminMode || !auth.currentUser) { showToast('❌ 无权限'); return; }
+                showModal('✏️ 编辑标点', [
+                    { key:'name', label:'标点名称', type:'text', placeholder:'标点名称', required:true, value:data.name },
+                    { key:'url', label:'外部链接', type:'url', placeholder:'https://...', required:true, value:data.url }
+                ], async (vals) => {
+                    try {
+                        await db.collection('markers_' + currentMapKey).doc(data.id).update({
+                            name: vals.name,
+                            url: vals.url
+                        });
+                        showToast('✅ 标点已更新');
+                    } catch(e) {
+                        console.error(e);
+                        showToast('❌ 更新失败：'+e.message);
+                    }
+                }, [{
+                    text: '🗑️ 删除',
+                    className: 'btn-danger',
+                    callback: async () => {
+                        try {
+                            await db.collection('markers_' + currentMapKey).doc(data.id).remove();
+                            showToast('🗑️ 标点已删除');
+                        } catch(e) {
+                            console.error(e);
+                            showToast('❌ 删除失败：'+e.message);
+                        }
+                    }
+                }]);
+            }
+
+            // ==================== 管理模式 ====================
+            async function enterAdminMode() {
+                try {
+                    await auth.signInAnonymously();
+                    isAdminMode = true;
+                    adminBtn.textContent = '🔧 退出管理';
+                    adminBtn.classList.add('active-admin');
+                    bannerEl.classList.add('show');
+                    mapEl.classList.add('crosshair-mode');
+                    showToast('🔧 管理模式已启用 — 点击地图放置标点');
+                } catch(e) {
+                    console.error(e);
+                    showToast('❌ 登录失败，请检查 CloudBase 匿名登录是否开启');
+                }
+            }
+            async function exitAdminMode() {
+                isAdminMode = false;
+                adminBtn.textContent = '⚙️ 管理';
+                adminBtn.classList.remove('active-admin');
+                bannerEl.classList.remove('show');
+                mapEl.classList.remove('crosshair-mode');
+                await auth.signOut();
+                showToast('👁️ 已退出管理模式（只读）');
+            }
+            function toggleAdmin() {
+                if(isAdminMode) exitAdminMode();
+                else showPasswordModal(success => { if(success) enterAdminMode(); else showToast('❌ 密码错误'); });
+            }
+
+            // ==================== 地图初始化 ====================
+            function getMapKeyFromURL() {
+                const p = new URLSearchParams(location.search);
+                const key = p.get('map');
+                return key && MAP_CONFIGS[key] ? key : null;
+            }
+            function createPlaceholderImage(cfg) {
+                const canvas = document.createElement('canvas'); canvas.width=DEFAULT_WIDTH; canvas.height=DEFAULT_HEIGHT;
+                const ctx = canvas.getContext('2d');
+                ctx.fillStyle=cfg.placeholderColor||'#1a1a1a'; ctx.fillRect(0,0,canvas.width,canvas.height);
+                ctx.strokeStyle='rgba(255,255,255,0.03)'; ctx.lineWidth=1;
+                for(let x=80; x<canvas.width; x+=80){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,canvas.height); ctx.stroke(); }
+                for(let y=80; y<canvas.height; y+=80){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(canvas.width,y); ctx.stroke(); }
+                ctx.fillStyle='rgba(255,255,255,0.12)'; ctx.font='bold 48px "PingFang SC","Microsoft YaHei",sans-serif'; ctx.textAlign='center';
+                ctx.fillText(cfg.name, canvas.width/2, canvas.height/2-20);
+                ctx.font='28px "PingFang SC","Microsoft YaHei",sans-serif'; ctx.fillText(cfg.enName, canvas.width/2, canvas.height/2+30);
+                ctx.fillStyle='rgba(255,255,255,0.06)'; ctx.font='16px "PingFang SC","Microsoft YaHei",sans-serif';
+                ctx.fillText('请将地图图片放入 maps 文件夹', canvas.width/2, canvas.height/2+70);
+                return canvas.toDataURL('image/jpeg',0.7);
+            }
+            function initMap(key, cfg) {
+                if(mapInstance) { clearMarkers(); mapInstance.remove(); mapInstance=null; imageOverlayInstance=null; }
+                errorOverlay.style.display='none';
+                imgW=DEFAULT_WIDTH; imgH=DEFAULT_HEIGHT;
+                mapInstance = L.map('map', {
+                    crs: L.CRS.Simple, minZoom:-4, maxZoom:4, zoomControl:true, attributionControl:false,
+                    zoomSnap:0.25, zoomDelta:0.5, wheelPxPerZoomLevel:120
+                });
+                mapInstance.zoomControl.setPosition('bottomright');
+                const img = new Image();
+                img.onload = () => {
+                    errorOverlay.style.display='none';
+                    imgW=img.naturalWidth; imgH=img.naturalHeight;
+                    setupOverlay(cfg.imagePath, imgW, imgH);
+                };
+                img.onerror = () => {
+                    errorOverlay.style.display='flex';
+                    const placeholder = createPlaceholderImage(cfg);
+                    setupOverlay(placeholder, DEFAULT_WIDTH, DEFAULT_HEIGHT);
+                };
+                img.src = cfg.imagePath;
+            }
+            function setupOverlay(url, w, h) {
+                if(!mapInstance) return;
+                const bounds = [[0,0],[h,w]];
+                if(imageOverlayInstance) mapInstance.removeLayer(imageOverlayInstance);
+                imageOverlayInstance = L.imageOverlay(url, bounds, { opacity:1, interactive:false }).addTo(mapInstance);
+                mapInstance.fitBounds(bounds, { padding:[0,0], animate:false });
+                mapInstance.setMaxBounds(bounds);
+                mapInstance.setMinZoom(mapInstance.getZoom()-1);
+                mapInstance.on('click', e => {
+                    if(!isAdminMode || !auth.currentUser) return;
+                    const x=e.latlng.lng, y=e.latlng.lat;
+                    if(x>=0 && y>=0 && x<=w && y<=h) addNewMarker(x,y);
+                });
+                startListen(currentMapKey);
+            }
+
+            // ==================== 启动 ====================
+            function main() {
+                const key = getMapKeyFromURL();
+                if(!key) { location.href='index.html'; return; }
+                currentMapKey = key;
+                currentMapConfig = MAP_CONFIGS[key];
+                titleEl.textContent = currentMapConfig.name + ' · ' + currentMapConfig.enName;
+                document.title = currentMapConfig.name + ' - 地图';
+                initMap(key, currentMapConfig);
+                adminBtn.addEventListener('click', toggleAdmin);
+                document.addEventListener('keydown', e => {
+                    if(e.ctrlKey && e.shiftKey && e.key==='A'){ e.preventDefault(); toggleAdmin(); }
+                    if(e.key==='Escape' && isAdminMode) exitAdminMode();
+                });
+            }
+            document.readyState==='loading' ? document.addEventListener('DOMContentLoaded', main) : main();
+        })();
+    </script>
+</body>
+</html>
