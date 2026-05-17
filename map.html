@@ -494,7 +494,18 @@
                 };
                 img.src = cfg.imagePath;
             }
+                        // 自动匿名登录（页面加载时调用，确保所有用户都能读取标点）
+            async function autoSignIn() {
+                const { data, error } = await auth.signInAnonymously();
+                if (error) {
+                    console.warn('自动匿名登录失败:', error);
+                } else {
+                    console.log('自动匿名登录成功');
+                }
+            }
+
             function setupOverlay(url, w, h) {
+                        async function setupOverlay(url, w, h) {
                 if(!mapInstance) return;
                 const bounds = [[0,0],[h,w]];
                 if(imageOverlayInstance) mapInstance.removeLayer(imageOverlayInstance);
@@ -507,8 +518,9 @@
                     const x=e.latlng.lng, y=e.latlng.lat;
                     if(x>=0 && y>=0 && x<=w && y<=h) addNewMarker(x,y);
                 });
-                // 改用 loadAllMarkers 替代原来的实时监听
-                loadAllMarkers();
+                // 先自动登录，再加载标点
+                await autoSignIn();
+                await loadAllMarkers();
             }
 
             // ==================== 启动 ====================
