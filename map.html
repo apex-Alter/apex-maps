@@ -201,7 +201,7 @@
     </div>
 
     <!-- CloudBase Web SDK -->
-    <script src="https://imgcache.qq.com/qcloud/cloudbase-js-sdk/1.7.1/cloudbase.full.js"></script>
+    <script src="https://static.cloudbase.net/cloudbase-js-sdk/2.7.12/cloudbase.full.js"></script>
     <!-- Leaflet JS -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
@@ -408,7 +408,7 @@
             // ==================== 管理模式 ====================
             async function enterAdminMode() {
                 try {
-                    await auth.signInAnonymously();
+                    await auth.anonymousAuthProvider().signIn();
                     isAdminMode = true;
                     adminBtn.textContent = '🔧 退出管理';
                     adminBtn.classList.add('active-admin');
